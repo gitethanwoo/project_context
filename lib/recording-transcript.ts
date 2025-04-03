@@ -43,27 +43,18 @@ async function downloadTranscriptWithRetry(downloadUrl: string, downloadToken: s
     hasDownloadToken: !!downloadToken
   });
 
-  const zoomToken = process.env.ZOOM_TOKEN;
-  if (!zoomToken) {
-    throw new Error('ZOOM_TOKEN environment variable is not set');
+  if (!downloadToken) {
+    throw new Error('No download token provided in webhook');
   }
 
   let lastError;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Add download token to URL if provided
-      const urlWithToken = downloadToken 
-        ? `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}access_token=${downloadToken}`
-        : downloadUrl;
-
+      // Add download token to URL
+      const urlWithToken = `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}access_token=${downloadToken}`;
       console.log(`Download attempt ${attempt + 1}, URL:`, urlWithToken);
 
-      const response = await fetch(urlWithToken, {
-        headers: {
-          'Authorization': `Bearer ${zoomToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await fetch(urlWithToken);
 
       console.log('Response status:', response.status);
       console.log('Response headers:', Object.fromEntries(response.headers.entries()));
