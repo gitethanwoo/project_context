@@ -135,7 +135,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         
         await slack.chat.postMessage({
           channel: slackResponse.user.id,
-          text: `Here's a summary of your call\nMeeting Name: ${object.topic || 'Untitled Meeting'}\nTime: From ${startTime} to ${endTime}\n\n${summary}`
+          text: `Here's a summary of your call\nMeeting Name: ${object.topic || 'Untitled Meeting'}\nTime: From ${startTime} to ${endTime}\n\n${summary}\n\nNote: Only you can see this as the meeting host. Please share with the channel for context!`
         });
         
         console.log(`Summary sent to ${object.host_email}`);
