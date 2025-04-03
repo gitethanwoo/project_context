@@ -38,11 +38,6 @@ async function delay(ms: number): Promise<void> {
 }
 
 async function downloadTranscriptWithRetry(downloadUrl: string, downloadToken: string | undefined, maxRetries = 3): Promise<string> {
-  console.log('Attempting to download transcript with:', {
-    url: downloadUrl,
-    hasDownloadToken: !!downloadToken
-  });
-
   if (!downloadToken) {
     throw new Error('No download token provided in webhook');
   }
@@ -52,54 +47,50 @@ async function downloadTranscriptWithRetry(downloadUrl: string, downloadToken: s
     try {
       // Add download token to URL
       const urlWithToken = `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}access_token=${downloadToken}`;
-      console.log(`Download attempt ${attempt + 1}, URL:`, urlWithToken);
+      
+      if (attempt > 0) {
+        console.log(`Retry attempt ${attempt + 1}/${maxRetries}...`);
+      }
 
       const response = await fetch(urlWithToken);
-
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         throw new Error(`Failed to download transcript: ${response.status} ${response.statusText}`);
       }
 
       const contentType = response.headers.get('content-type');
-      console.log('Content-Type:', contentType);
-
       const text = await response.text();
-      console.log('Response preview:', text.substring(0, 200));
 
       // Check if we got HTML instead of transcript text
       if (contentType?.includes('text/html') || text.toLowerCase().includes('<!doctype html>')) {
-        console.error('Received HTML instead of transcript text. URL might be expired or invalid.');
         throw new Error('Invalid transcript response format');
       }
 
       return text;
     } catch (error) {
       lastError = error;
-      const waitTime = Math.pow(2, attempt) * 1000;
-      console.log(`Attempt ${attempt + 1} failed:`, error);
-      console.log(`Waiting ${waitTime}ms before retry...`);
-      await delay(waitTime);
+      if (attempt < maxRetries - 1) {
+        const waitTime = Math.pow(2, attempt) * 1000;
+        await delay(waitTime);
+      }
     }
   }
 
   throw lastError || new Error('Failed to download transcript after all retries');
 }
 
+function formatTime(isoString: string): string {
+  const date = new Date(isoString);
+  return date.toLocaleTimeString('en-US', { 
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true 
+  });
+}
+
 export async function handleTranscriptCompleted(payload: TranscriptPayload, downloadToken?: string) {
   try {
     const { object } = payload;
-    
-    // Log the webhook payload for debugging
-    console.log('Processing transcript webhook:', {
-      meetingId: object.id,
-      topic: object.topic,
-      hostEmail: object.host_email,
-      recordingFiles: object.recording_files.length,
-      hasDownloadToken: !!downloadToken
-    });
     
     // Find the transcript file
     const transcriptFile = object.recording_files.find(
@@ -111,16 +102,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       return;
     }
 
-    console.log('Found transcript file:', {
-      fileId: transcriptFile.id,
-      meetingId: transcriptFile.meeting_id,
-      fileType: transcriptFile.file_type,
-      fileSize: transcriptFile.file_size,
-      downloadUrl: transcriptFile.download_url
-    });
-
-    // Download the transcript with retry logic
-    console.log('Attempting to download transcript...');
+    console.log(`Downloading transcript for meeting "${object.topic}"...`);
     const transcript = await downloadTranscriptWithRetry(transcriptFile.download_url, downloadToken);
     
     // For testing: only send to ethan@servant.io
@@ -136,13 +118,15 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       });
       
       if (slackResponse.ok && slackResponse.user && slackResponse.user.id) {
-        // Send DM to user
+        const startTime = formatTime(transcriptFile.recording_start);
+        const endTime = formatTime(transcriptFile.recording_end);
+        
         await slack.chat.postMessage({
           channel: slackResponse.user.id,
-          text: `Your meeting transcript for "${object.topic || 'Untitled Meeting'}" is ready!\n\n${transcript}`
+          text: `Here's a summary of your call\nMeeting Name: ${object.topic || 'Untitled Meeting'}\nTime: From ${startTime} to ${endTime}\n\n${transcript}`
         });
         
-        console.log('Successfully sent transcript to user:', object.host_email);
+        console.log(`Transcript sent to ${object.host_email}`);
       } else {
         console.error('Could not find Slack user for email:', object.host_email);
       }
@@ -151,7 +135,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     }
     
   } catch (error) {
-    console.error('Error handling transcript completed event:', error);
+    console.error('Error handling transcript:', error);
     throw error;
   }
 } 
