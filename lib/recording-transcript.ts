@@ -116,8 +116,8 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     console.log('Generating summary...');
     const summary = await generateSummaryBasic(cleanedTranscript);
     
-    // For testing: only send to ethan@servant.io
-    if (object.host_email !== 'ethan@servant.io') {
+    // For testing: only send to ethan@servant.io and joe@servant.io
+    if (!['ethan@servant.io', 'joe@servant.io', 'jake@servant.io'].includes(object.host_email)) {
       console.log('Skipping Slack message - not test user:', object.host_email);
       return;
     }
