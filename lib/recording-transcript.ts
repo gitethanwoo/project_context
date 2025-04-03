@@ -37,25 +37,59 @@ async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function downloadTranscriptWithRetry(downloadUrl: string, maxRetries = 3): Promise<string> {
+async function downloadTranscriptWithRetry(downloadUrl: string, downloadToken: string | undefined, maxRetries = 3): Promise<string> {
+  console.log('Attempting to download transcript with:', {
+    url: downloadUrl,
+    hasDownloadToken: !!downloadToken
+  });
+
+  const zoomToken = process.env.ZOOM_TOKEN;
+  if (!zoomToken) {
+    throw new Error('ZOOM_TOKEN environment variable is not set');
+  }
+
   let lastError;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const response = await fetch(downloadUrl);
+      // Add download token to URL if provided
+      const urlWithToken = downloadToken 
+        ? `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}access_token=${downloadToken}`
+        : downloadUrl;
 
-      if (response.ok) {
-        return await response.text();
+      console.log(`Download attempt ${attempt + 1}, URL:`, urlWithToken);
+
+      const response = await fetch(urlWithToken, {
+        headers: {
+          'Authorization': `Bearer ${zoomToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        throw new Error(`Failed to download transcript: ${response.status} ${response.statusText}`);
       }
 
-      // If we get an unauthorized error or any other error, wait and retry
-      const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
-      console.log(`Attempt ${attempt + 1} failed, waiting ${waitTime}ms before retry...`);
-      await delay(waitTime);
-      continue;
+      const contentType = response.headers.get('content-type');
+      console.log('Content-Type:', contentType);
+
+      const text = await response.text();
+      console.log('Response preview:', text.substring(0, 200));
+
+      // Check if we got HTML instead of transcript text
+      if (contentType?.includes('text/html') || text.toLowerCase().includes('<!doctype html>')) {
+        console.error('Received HTML instead of transcript text. URL might be expired or invalid.');
+        throw new Error('Invalid transcript response format');
+      }
+
+      return text;
     } catch (error) {
       lastError = error;
       const waitTime = Math.pow(2, attempt) * 1000;
-      console.log(`Attempt ${attempt + 1} failed, waiting ${waitTime}ms before retry...`);
+      console.log(`Attempt ${attempt + 1} failed:`, error);
+      console.log(`Waiting ${waitTime}ms before retry...`);
       await delay(waitTime);
     }
   }
@@ -63,16 +97,17 @@ async function downloadTranscriptWithRetry(downloadUrl: string, maxRetries = 3):
   throw lastError || new Error('Failed to download transcript after all retries');
 }
 
-export async function handleTranscriptCompleted(payload: TranscriptPayload) {
+export async function handleTranscriptCompleted(payload: TranscriptPayload, downloadToken?: string) {
   try {
     const { object } = payload;
     
     // Log the webhook payload for debugging
-    console.log('Received transcript webhook:', {
+    console.log('Processing transcript webhook:', {
       meetingId: object.id,
       topic: object.topic,
       hostEmail: object.host_email,
-      recordingFiles: object.recording_files.length
+      recordingFiles: object.recording_files.length,
+      hasDownloadToken: !!downloadToken
     });
     
     // Find the transcript file
@@ -89,12 +124,13 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload) {
       fileId: transcriptFile.id,
       meetingId: transcriptFile.meeting_id,
       fileType: transcriptFile.file_type,
-      fileSize: transcriptFile.file_size
+      fileSize: transcriptFile.file_size,
+      downloadUrl: transcriptFile.download_url
     });
 
     // Download the transcript with retry logic
     console.log('Attempting to download transcript...');
-    const transcript = await downloadTranscriptWithRetry(transcriptFile.download_url);
+    const transcript = await downloadTranscriptWithRetry(transcriptFile.download_url, downloadToken);
     
     // For testing: only send to ethan@servant.io
     if (object.host_email !== 'ethan@servant.io') {

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { handleTranscriptCompleted } from './notification/handlers/recording-transcript';
+import { handleTranscriptCompleted } from '../lib/recording-transcript';
 
 // Types for Zoom webhook payloads
 interface ZoomWebhookPayload {
@@ -38,6 +38,28 @@ interface ZoomWebhookPayload {
 export async function POST(request: Request) {
   const rawBody = await request.text();
   const payload = JSON.parse(rawBody) as ZoomWebhookPayload;
+
+  // Debug logging
+  console.log('=== Zoom Webhook Debug Info ===');
+  console.log('Full payload:', JSON.stringify(payload, null, 2));
+  console.log('Event type:', payload.event);
+  console.log('Download token:', payload.download_token);
+  if (payload.payload?.object) {
+    console.log('Meeting details:', {
+      id: payload.payload.object.id,
+      topic: payload.payload.object.topic,
+      host_email: payload.payload.object.host_email
+    });
+    if (payload.payload.object.recording_files) {
+      console.log('Recording files:', payload.payload.object.recording_files.map(file => ({
+        id: file.id,
+        type: file.recording_type,
+        size: file.file_size,
+        download_url: file.download_url
+      })));
+    }
+  }
+  console.log('=== End Debug Info ===');
 
   try {
     // Handle Zoom's webhook verification challenge
@@ -95,7 +117,9 @@ export async function POST(request: Request) {
             ...payload.payload.object,
             recording_files: payload.payload.object.recording_files
           }
-        });
+        },
+        payload.download_token // Pass the download token to the handler
+        );
         break;
         
       default:

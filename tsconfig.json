@@ -13,5 +13,5 @@
   ],
   "include": [
     "api"
-  ]
+, "lib/recording-transcript.ts"  ]
 }
