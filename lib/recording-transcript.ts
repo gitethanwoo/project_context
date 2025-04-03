@@ -115,7 +115,6 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     // Generate summary
     console.log('Generating summary...');
     const summary = await generateSummaryBasic(cleanedTranscript);
-    console.log(summary);
     
     // For testing: only send to ethan@servant.io and joe@servant.io
     if (!['ethan@servant.io', 'joe@servant.io', 'jake@servant.io'].includes(object.host_email)) {
