@@ -1,4 +1,6 @@
 import { WebClient } from '@slack/web-api';
+import { generateSummaryBasic } from './generate-summary';
+import { cleanVTTTranscript } from './transcript-utils';
 
 interface TranscriptFile {
   id: string;
@@ -81,11 +83,13 @@ async function downloadTranscriptWithRetry(downloadUrl: string, downloadToken: s
 
 function formatTime(isoString: string): string {
   const date = new Date(isoString);
-  return date.toLocaleTimeString('en-US', { 
+  // Convert to EST (UTC-4)
+  const estDate = new Date(date.getTime() - (4 * 60 * 60 * 1000));
+  return `${estDate.toLocaleTimeString('en-US', { 
     hour: 'numeric',
     minute: '2-digit',
     hour12: true 
-  });
+  })} EST`;
 }
 
 export async function handleTranscriptCompleted(payload: TranscriptPayload, downloadToken?: string) {
@@ -103,7 +107,14 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     }
 
     console.log(`Downloading transcript for meeting "${object.topic}"...`);
-    const transcript = await downloadTranscriptWithRetry(transcriptFile.download_url, downloadToken);
+    const rawTranscript = await downloadTranscriptWithRetry(transcriptFile.download_url, downloadToken);
+    
+    // Clean the VTT transcript
+    const cleanedTranscript = cleanVTTTranscript(rawTranscript);
+    
+    // Generate summary
+    console.log('Generating summary...');
+    const summary = await generateSummaryBasic(cleanedTranscript);
     
     // For testing: only send to ethan@servant.io
     if (object.host_email !== 'ethan@servant.io') {
@@ -123,10 +134,10 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         
         await slack.chat.postMessage({
           channel: slackResponse.user.id,
-          text: `Here's a summary of your call\nMeeting Name: ${object.topic || 'Untitled Meeting'}\nTime: From ${startTime} to ${endTime}\n\n${transcript}`
+          text: `Here's a summary of your call\nMeeting Name: ${object.topic || 'Untitled Meeting'}\nTime: From ${startTime} to ${endTime}\n\n${summary}`
         });
         
-        console.log(`Transcript sent to ${object.host_email}`);
+        console.log(`Summary sent to ${object.host_email}`);
       } else {
         console.error('Could not find Slack user for email:', object.host_email);
       }
