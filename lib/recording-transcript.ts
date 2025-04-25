@@ -1,6 +1,12 @@
 import { WebClient } from '@slack/web-api';
 import { generateSummaryBasic } from './generate-summary';
 import { cleanVTTTranscript } from './transcript-utils';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
 interface TranscriptFile {
   id: string;
@@ -106,7 +112,54 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       return;
     }
 
-    console.log(`Downloading transcript for meeting "${object.topic}"...`);
+    // First, check if we already have a transcript with this recording time
+    const { data: existingTranscripts } = await supabase
+      .from('transcripts')
+      .select('id')
+      .eq('recording_start', new Date(transcriptFile.recording_start))
+      .eq('recording_end', new Date(transcriptFile.recording_end));
+      
+    if (existingTranscripts && existingTranscripts.length > 0) {
+      // We already processed this transcript
+      console.log(`Skipping duplicate webhook for meeting "${object.topic}" - transcript already exists`);
+      return;
+    }
+    
+    // Check if this meeting already exists in our database
+    let { data: existingMeeting } = await supabase
+      .from('meetings')
+      .select('id')
+      .eq('zoom_meeting_id', object.id)
+      .single();
+
+    let meetingId: number | undefined;
+
+    if (!existingMeeting) {
+      // Create a new meeting record
+      const { data: newMeeting, error: meetingError } = await supabase
+        .from('meetings')
+        .insert({
+          zoom_meeting_id: object.id,
+          zoom_user_id: object.host_id,
+          topic: object.topic,
+          start_time: new Date(object.start_time),
+          duration: object.duration
+        })
+        .select('id')
+        .single();
+
+      if (meetingError) {
+        console.error('Error creating meeting record:', meetingError);
+        // Continue with process, as we still want to send the summary
+      } else if (newMeeting) {
+        meetingId = newMeeting.id;
+      }
+    } else {
+      meetingId = existingMeeting.id;
+    }
+
+    // Process the transcript
+    console.log(`Processing transcript for meeting "${object.topic}"...`);
     const rawTranscript = await downloadTranscriptWithRetry(transcriptFile.download_url, downloadToken);
     
     // Clean the VTT transcript
@@ -115,6 +168,29 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     // Generate summary
     console.log('Generating summary...');
     const summary = await generateSummaryBasic(cleanedTranscript);
+    
+    // Save to database if we have a meeting ID
+    if (meetingId) {
+      const transcriptData = {
+        meeting_id: meetingId,
+        recording_start: new Date(transcriptFile.recording_start),
+        recording_end: new Date(transcriptFile.recording_end),
+        file_type: transcriptFile.file_type,
+        download_url: transcriptFile.download_url,
+        transcript_status: 'completed',
+        transcript_content: {
+          raw: rawTranscript,
+          cleaned: cleanedTranscript,
+          summary: summary
+        }
+      };
+      
+      await supabase
+        .from('transcripts')
+        .insert(transcriptData);
+        
+      console.log(`Transcript saved to database for meeting "${object.topic}"`);
+    }
     
     // For testing: only send to ethan@servant.io and joe@servant.io
     if (!['ethan@servant.io', 'joe@servant.io', 'jake@servant.io', 'arlene@servant.io'].includes(object.host_email)) {

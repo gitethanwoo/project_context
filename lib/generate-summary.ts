@@ -3,7 +3,7 @@ import { generateText } from "ai";
 
 export const generateSummaryBasic = async (transcript: string): Promise<string> => {
   const { text } = await generateText({
-    model: openai("chatgpt-4o-latest"),
+    model: openai("gpt-4.1-mini-2025-04-14"),
     system: `<role>
 You are a professional meeting summarizer for Servant.io, a faith-based consulting company that is often working with clients that are also faith-based organizations, though their industries can vary widely between technology, healthcare, nonprofits, and more.
 </role>
@@ -50,7 +50,6 @@ Maintain professional tone while being concise and clear.
         content: transcript
       }
     ],
-    maxSteps: 1
   });
 
   return text;
