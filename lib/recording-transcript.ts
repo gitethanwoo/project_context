@@ -115,7 +115,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     // First, check if we already have a transcript with this recording time
     const { data: existingTranscripts } = await supabase
       .from('transcripts')
-      .select('id')
+      .select('id, summary')
       .eq('recording_start', new Date(transcriptFile.recording_start))
       .eq('recording_end', new Date(transcriptFile.recording_end));
       
@@ -175,14 +175,14 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         meeting_id: meetingId,
         recording_start: new Date(transcriptFile.recording_start),
         recording_end: new Date(transcriptFile.recording_end),
-        file_type: transcriptFile.file_type,
         download_url: transcriptFile.download_url,
         transcript_status: 'completed',
         transcript_content: {
           raw: rawTranscript,
           cleaned: cleanedTranscript,
-          summary: summary
-        }
+          summary: summary // Keep in JSONB for backward compatibility
+        },
+        summary: summary // Store in dedicated column for easier querying
       };
       
       await supabase
