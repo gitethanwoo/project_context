@@ -159,6 +159,21 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     } else {
       meetingId = existingMeeting.id;
     }
+    
+    // Double-check for duplicates before processing transcript
+    if (meetingId) {
+      const { data: finalCheck } = await supabase
+        .from('transcripts')
+        .select('id')
+        .eq('meeting_id', meetingId)
+        .eq('recording_start', transcriptFile.recording_start)
+        .eq('recording_end', transcriptFile.recording_end);
+        
+      if (finalCheck && finalCheck.length > 0) {
+        console.log(`Duplicate detected during final check for meeting "${object.topic}" - skipping processing`);
+        return;
+      }
+    }
 
     // Process the transcript
     console.log(`Processing transcript for meeting "${object.topic}"...`);
@@ -173,19 +188,6 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     
     // Save to database if we have a meeting ID
     if (meetingId) {
-      // Double-check once more for duplicates before insert
-      const { data: finalCheck } = await supabase
-        .from('transcripts')
-        .select('id')
-        .eq('meeting_id', meetingId)
-        .eq('recording_start', transcriptFile.recording_start)
-        .eq('recording_end', transcriptFile.recording_end);
-        
-      if (finalCheck && finalCheck.length > 0) {
-        console.log(`Duplicate detected during final check for meeting "${object.topic}" - skipping database insert`);
-        return;
-      }
-      
       const transcriptData = {
         meeting_id: meetingId,
         recording_start: transcriptFile.recording_start,
