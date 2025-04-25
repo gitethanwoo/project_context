@@ -180,7 +180,6 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         transcript_content: {
           raw: rawTranscript,
           cleaned: cleanedTranscript,
-          summary: summary // Keep in JSONB for backward compatibility
         },
         summary: summary // Store in dedicated column for easier querying
       };
