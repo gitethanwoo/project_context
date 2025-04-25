@@ -113,15 +113,17 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     }
 
     // First, check if we already have a transcript with this recording time
+    // Use explicit format casting to match database storage format
     const { data: existingTranscripts } = await supabase
       .from('transcripts')
       .select('id, summary')
-      .eq('recording_start', new Date(transcriptFile.recording_start))
-      .eq('recording_end', new Date(transcriptFile.recording_end));
+      .eq('meeting_id', object.id)  // Use meeting_id directly for first check
+      .eq('recording_start', transcriptFile.recording_start)
+      .eq('recording_end', transcriptFile.recording_end);
       
     if (existingTranscripts && existingTranscripts.length > 0) {
       // We already processed this transcript
-      console.log(`Skipping duplicate webhook for meeting "${object.topic}" - transcript already exists`);
+      console.log(`Skipping duplicate webhook for meeting "${object.topic}" - transcript already exists (id: ${existingTranscripts[0].id})`);
       return;
     }
     
@@ -171,10 +173,23 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     
     // Save to database if we have a meeting ID
     if (meetingId) {
+      // Double-check once more for duplicates before insert
+      const { data: finalCheck } = await supabase
+        .from('transcripts')
+        .select('id')
+        .eq('meeting_id', meetingId)
+        .eq('recording_start', transcriptFile.recording_start)
+        .eq('recording_end', transcriptFile.recording_end);
+        
+      if (finalCheck && finalCheck.length > 0) {
+        console.log(`Duplicate detected during final check for meeting "${object.topic}" - skipping database insert`);
+        return;
+      }
+      
       const transcriptData = {
         meeting_id: meetingId,
-        recording_start: new Date(transcriptFile.recording_start),
-        recording_end: new Date(transcriptFile.recording_end),
+        recording_start: transcriptFile.recording_start,
+        recording_end: transcriptFile.recording_end,
         download_url: transcriptFile.download_url,
         transcript_status: 'completed',
         transcript_content: {
@@ -184,11 +199,20 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         summary: summary // Store in dedicated column for easier querying
       };
       
-      await supabase
+      const { error: insertError } = await supabase
         .from('transcripts')
         .insert(transcriptData);
         
-      console.log(`Transcript saved to database for meeting "${object.topic}"`);
+      if (insertError) {
+        // If it's a unique constraint violation, it's simply a duplicate
+        if (insertError.code === '23505') {
+          console.log(`Duplicate transcript detected by database constraint for meeting "${object.topic}"`);
+          return;
+        }
+        console.error('Error inserting transcript:', insertError);
+      } else {
+        console.log(`Transcript saved to database for meeting "${object.topic}"`);
+      }
     }
     
     // For testing: only send to ethan@servant.io and joe@servant.io
