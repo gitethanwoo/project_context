@@ -39,7 +39,7 @@ Takeaways: <3-5 bullet points of key discussions, decisions, or insights>
 Next Steps: <1-10 specific, actionable next steps or action items with clear ownership>
 Potential Gaps: <1-3 bullet points of potential gaps in the meeting, or areas that could be improved>
 
-Maintain professional tone while being concise and clear.
+Maintain professional tone while being concise and clear. Do not be overly verbose or else nobody will read it.
 </task>
 
 

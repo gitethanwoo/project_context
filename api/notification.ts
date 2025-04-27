@@ -105,29 +105,51 @@ export async function POST(request: Request) {
     switch (payload.event) {
       case 'recording.transcript_completed':
         if (!payload.payload.object || !payload.payload.object.recording_files) {
-          return new Response(JSON.stringify({ error: 'Invalid transcript payload' }), { 
+          return new Response(JSON.stringify({ error: 'Invalid transcript payload' }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' }
           });
         }
-        await handleTranscriptCompleted({ 
+        
+        // Respond immediately to Zoom to prevent retries
+        // The actual processing will happen asynchronously
+        const response = new Response(JSON.stringify({ status: 'success' }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        // Call handler asynchronously (fire and forget)
+        handleTranscriptCompleted({ 
           object: {
             ...payload.payload.object,
             recording_files: payload.payload.object.recording_files
           }
         },
         payload.download_token // Pass the download token to the handler
-        );
-        break;
+        ).catch(error => {
+          // Log errors from the async handler, but don't block the response
+          console.error('Error in background transcript processing:', error);
+        });
+
+        return response; // Return the immediate response
         
       default:
         console.log('Unhandled event type:', payload.event);
+        // Return success for unhandled events as well, just acknowledge receipt
+        return new Response(JSON.stringify({ status: 'success - unhandled event' }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
     }
 
-    return new Response(JSON.stringify({ status: 'success' }), { 
+    // This point should ideally not be reached if all cases return a response
+    // but as a fallback:
+    /* 
+    return new Response(JSON.stringify({ status: 'success - fallback' }), { 
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
+    */
   } catch (error) {
     console.error('Error processing webhook:', error);
     return new Response(JSON.stringify({ 
