@@ -112,7 +112,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       return;
     }
 
-    // First, check if we already have a transcript with this recording time
+    // Check if we already have a transcript with this recording time
     // Use explicit format casting to match database storage format
     const { data: existingTranscripts } = await supabase
       .from('transcripts')
@@ -127,11 +127,13 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       return;
     }
     
-    // Check if this meeting already exists in our database
+    // Check if this SPECIFIC meeting instance already exists in our database
+    // Using both zoom_meeting_id AND zoom_meeting_uuid to differentiate between PMR instances
     let { data: existingMeeting } = await supabase
       .from('meetings')
       .select('id')
       .eq('zoom_meeting_id', object.id)
+      .eq('zoom_meeting_uuid', object.uuid) // Add UUID check to identify unique meeting instances
       .single();
 
     let meetingId: number | undefined;
@@ -142,6 +144,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         .from('meetings')
         .insert({
           zoom_meeting_id: object.id,
+          zoom_meeting_uuid: object.uuid, // Store the UUID to identify this specific meeting instance
           zoom_user_id: object.host_id,
           topic: object.topic,
           start_time: new Date(object.start_time),
