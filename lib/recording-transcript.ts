@@ -114,12 +114,18 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
 
     // Check if we already have a transcript with this recording time
     // Use explicit format casting to match database storage format
-    const { data: existingTranscripts } = await supabase
+    const { data: existingTranscripts, error: transcriptError } = await supabase
       .from('transcripts')
       .select('id, summary')
       .eq('meeting_id', object.id)  // Use meeting_id directly for first check
       .eq('recording_start', transcriptFile.recording_start)
       .eq('recording_end', transcriptFile.recording_end);
+      
+    // Log any error from the initial transcript check
+    if (transcriptError) {
+      console.warn('Supabase error checking for existing transcript:', transcriptError);
+      // Decide if we should return or continue; for now, let's continue
+    }
       
     if (existingTranscripts && existingTranscripts.length > 0) {
       // We already processed this transcript
@@ -129,12 +135,24 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     
     // Check if this SPECIFIC meeting instance already exists in our database
     // Using both zoom_meeting_id AND zoom_meeting_uuid to differentiate between PMR instances
-    let { data: existingMeeting } = await supabase
+    let { data: existingMeeting, error: meetingCheckError } = await supabase
       .from('meetings')
       .select('id')
       .eq('zoom_meeting_id', object.id)
       .eq('zoom_meeting_uuid', object.uuid) // Add UUID check to identify unique meeting instances
       .single();
+
+    // Log errors from meeting check, but treat expected 'no rows' (PGRST116) differently
+    if (meetingCheckError) {
+      if (meetingCheckError.code === 'PGRST116') {
+        // This is expected when the meeting doesn't exist yet
+        console.log(`Meeting check: No existing meeting found for id=${object.id}, uuid=${object.uuid}. Proceeding to create.`);
+      } else {
+        // Log other unexpected errors
+        console.error('Supabase error checking for existing meeting:', meetingCheckError);
+        // Potentially return here if the error is critical
+      }
+    }
 
     let meetingId: number | undefined;
 
@@ -165,12 +183,18 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     
     // Double-check for duplicates before processing transcript
     if (meetingId) {
-      const { data: finalCheck } = await supabase
+      const { data: finalCheck, error: finalCheckError } = await supabase
         .from('transcripts')
         .select('id')
         .eq('meeting_id', meetingId)
         .eq('recording_start', transcriptFile.recording_start)
         .eq('recording_end', transcriptFile.recording_end);
+        
+      // Log any error from the final transcript check
+      if (finalCheckError) {
+        console.warn('Supabase error during final transcript check:', finalCheckError);
+        // Decide if we should return or continue; for now, let's continue
+      }
         
       if (finalCheck && finalCheck.length > 0) {
         console.log(`Duplicate detected during final check for meeting "${object.topic}" - skipping processing`);
