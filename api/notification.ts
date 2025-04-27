@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { handleTranscriptCompleted } from '../lib/recording-transcript';
+import { waitUntil } from '@vercel/functions';
 
 // Types for Zoom webhook payloads
 interface ZoomWebhookPayload {
@@ -110,28 +111,28 @@ export async function POST(request: Request) {
             headers: { 'Content-Type': 'application/json' }
           });
         }
-        
-        // Respond immediately to Zoom to prevent retries
-        // The actual processing will happen asynchronously
-        const response = new Response(JSON.stringify({ status: 'success' }), { 
+
+        // Call handler and keep the function alive until it finishes
+        waitUntil(
+          handleTranscriptCompleted({
+            object: {
+              ...payload.payload.object,
+              recording_files: payload.payload.object.recording_files
+            }
+          },
+          payload.download_token // Pass the download token to the handler
+          ).catch(error => {
+            // Log errors from the async handler
+            console.error('Error in background transcript processing:', error);
+            // Optionally, you could add more robust error reporting here
+          })
+        );
+
+        // Respond immediately to Zoom
+        return new Response(JSON.stringify({ status: 'success' }), { 
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
-
-        // Call handler asynchronously (fire and forget)
-        handleTranscriptCompleted({ 
-          object: {
-            ...payload.payload.object,
-            recording_files: payload.payload.object.recording_files
-          }
-        },
-        payload.download_token // Pass the download token to the handler
-        ).catch(error => {
-          // Log errors from the async handler, but don't block the response
-          console.error('Error in background transcript processing:', error);
-        });
-
-        return response; // Return the immediate response
         
       default:
         console.log('Unhandled event type:', payload.event);
