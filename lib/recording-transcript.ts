@@ -201,9 +201,12 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         summary: summary // Store in dedicated column for easier querying
       };
       
-      const { error: insertError } = await supabase
+      // Modify the insert to return the id of the new record
+      const { data: insertedTranscript, error: insertError } = await supabase
         .from('transcripts')
-        .insert(transcriptData);
+        .insert(transcriptData)
+        .select('id') // Add this line to get the id
+        .single(); // We expect only one row
         
       if (insertError) {
         // If it's a unique constraint violation, it's simply a duplicate
@@ -212,38 +215,131 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
           return;
         }
         console.error('Error inserting transcript:', insertError);
+        // If insertion fails, we can't send a delete button
+        // Decide if we should still send the summary without the button or just return
+        // For now, let's just log the error and proceed without a transcriptId
+      } else if (insertedTranscript) {
+        console.log(`Transcript saved to database for meeting "${object.topic}" with ID: ${insertedTranscript.id}`);
+        // Store the ID for use in the button
+        const transcriptId = insertedTranscript.id;
+
+        // For testing: only send to ethan@servant.io and joe@servant.io etc.
+        if (!['ethan@servant.io', 'joe@servant.io', 'jake@servant.io', 'arlene@servant.io', 'matt@servant.io'].includes(object.host_email)) {
+          console.log('Skipping Slack message - not test user:', object.host_email);
+          return;
+        }
+
+        // Look up user in Slack by email
+        try {
+          const slackResponse = await slack.users.lookupByEmail({
+            email: object.host_email
+          });
+
+          if (slackResponse.ok && slackResponse.user && slackResponse.user.id) {
+            const startTime = formatTime(transcriptFile.recording_start);
+            const endTime = formatTime(transcriptFile.recording_end);
+            const fallbackText = `Here's a summary of your call
+Meeting Name: ${object.topic || 'Untitled Meeting'}
+Time: From ${startTime} to ${endTime}
+
+${summary}
+
+Note: Only you can see this as the meeting host. Please share with the channel for context!`;
+
+            // Send message using blocks including the delete button
+            await slack.chat.postMessage({
+              channel: slackResponse.user.id,
+              text: fallbackText, // Fallback text for notifications
+              blocks: [
+                {
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: `*Meeting Summary: ${object.topic || 'Untitled Meeting'}*
+*Time:* ${startTime} - ${endTime}
+
+${summary}
+
+_Note: Only you can see this as the meeting host. Please share with the channel for context!_`
+                  }
+                },
+                {
+                  type: 'actions',
+                  elements: [
+                    {
+                      type: 'button',
+                      text: {
+                        type: 'plain_text',
+                        text: 'Delete Transcript',
+                        emoji: true
+                      },
+                      style: 'danger', // Make it red to indicate deletion
+                      action_id: 'delete_transcript', // Matches the ID handled in interactive.ts
+                      value: transcriptId.toString(), // Pass the transcript ID as the value
+                      confirm: { // Add a confirmation dialog
+                          title: {
+                              type: "plain_text",
+                              text: "Are you sure?"
+                          },
+                          text: {
+                              type: "mrkdwn",
+                              text: "This will permanently delete the transcript and its summary from the database. This action cannot be undone."
+                          },
+                          confirm: {
+                              type: "plain_text",
+                              text: "Yes, Delete It"
+                          },
+                          deny: {
+                              type: "plain_text",
+                              text: "Cancel"
+                          }
+                      }
+                    }
+                  ]
+                }
+              ]
+            });
+
+            console.log(`Summary and delete button sent to ${object.host_email} for transcript ID: ${transcriptId}`);
+          } else {
+            console.error('Could not find Slack user for email:', object.host_email);
+          }
+        } catch (error) {
+          console.error('Error sending Slack message:', error);
+        }
       } else {
-        console.log(`Transcript saved to database for meeting "${object.topic}"`);
+         console.log('Transcript inserted but no ID returned, cannot send delete button.');
+         // Decide how to handle this case - maybe send summary without button?
+         // For now, just log and do nothing else.
       }
-    }
-    
-    // For testing: only send to ethan@servant.io and joe@servant.io
-    if (!['ethan@servant.io', 'joe@servant.io', 'jake@servant.io', 'arlene@servant.io, matt@servant.io'].includes(object.host_email)) {
-      console.log('Skipping Slack message - not test user:', object.host_email);
-      return;
-    }
-    
-    // Look up user in Slack by email
-    try {
-      const slackResponse = await slack.users.lookupByEmail({
-        email: object.host_email
-      });
-      
-      if (slackResponse.ok && slackResponse.user && slackResponse.user.id) {
-        const startTime = formatTime(transcriptFile.recording_start);
-        const endTime = formatTime(transcriptFile.recording_end);
-        
-        await slack.chat.postMessage({
-          channel: slackResponse.user.id,
-          text: `Here's a summary of your call\nMeeting Name: ${object.topic || 'Untitled Meeting'}\nTime: From ${startTime} to ${endTime}\n\n${summary}\n\nNote: Only you can see this as the meeting host. Please share with the channel for context!`
-        });
-        
-        console.log(`Summary sent to ${object.host_email}`);
-      } else {
-        console.error('Could not find Slack user for email:', object.host_email);
-      }
-    } catch (error) {
-      console.error('Error sending Slack message:', error);
+    } else {
+        // Handle case where meetingId is undefined (e.g., meeting creation failed)
+        // We can still send the summary, but without a transcript record or delete button
+        console.log(`Meeting ID not found for meeting "${object.topic}", cannot save transcript or send delete button.`);
+         // Optionally send the summary without DB interaction or button:
+         /*
+        // Look up user in Slack by email
+        try {
+          const slackResponse = await slack.users.lookupByEmail({ email: object.host_email });
+          if (slackResponse.ok && slackResponse.user && slackResponse.user.id) {
+            const startTime = formatTime(transcriptFile.recording_start);
+            const endTime = formatTime(transcriptFile.recording_end);
+            await slack.chat.postMessage({
+              channel: slackResponse.user.id,
+              text: `Here's a summary of your call (not saved):
+Meeting Name: ${object.topic || 'Untitled Meeting'}
+Time: From ${startTime} to ${endTime}
+
+${summary}`
+            });
+             console.log(`Summary sent to ${object.host_email} (without saving transcript)`);
+          } else {
+             console.error('Could not find Slack user for email:', object.host_email);
+          }
+        } catch (error) {
+           console.error('Error sending Slack message (unsaved transcript):', error);
+        }
+        */
     }
     
   } catch (error) {
