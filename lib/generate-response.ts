@@ -21,6 +21,16 @@ export const generateResponse = async (
 
     updateStatus?.("Processing your request...");
 
+    // Map raw tool names to friendly status messages
+    const toolStatusMap: Record<string, string> = {
+      getMyChannels: "Checking which channels I can access…",
+      fetchChannelHistory: "Retrieving channel history…",
+      getBulkChannelHistory: "Gathering context from multiple channels…",
+      getThreadReplies: "Fetching thread replies…",
+      postMessage: "Posting message…",
+      think: "I'm thinking…",
+    };
+
     const { text } = await generateText({
       model: openai("gpt-4.1-2025-04-14"),
       system: `You are a Slack bot assistant Keep your responses concise and to the point.
@@ -85,8 +95,10 @@ Use the 'think' tool to:
       tools: mcpTools,
       onStepFinish: async (stepResult) => {
         console.log("Step result:", stepResult);
-        if (stepResult.finishReason !== 'stop') {
-          updateStatus?.("Using tools to get information...");
+        if (stepResult.toolCalls?.length) {
+          const toolName = stepResult.toolCalls[0].toolName;
+          const statusText = toolStatusMap[toolName] || `Calling ${toolName}…`;
+          updateStatus?.(statusText);
         }
       }
     });
