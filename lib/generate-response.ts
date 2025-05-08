@@ -30,9 +30,13 @@ export const generateResponse = async (
       maxSteps: 15,
       tools: mcpTools,
       onStepFinish: async (stepResult) => {
+        console.log("Step result:", stepResult);
         updateStatus?.("Using tools to get information...");
       }
     });
+
+    // Log raw response before formatting
+    console.log("Raw response:", text);
 
     // Close the MCP client when done with successful generation
     if (mcpClient) {
