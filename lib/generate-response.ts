@@ -85,7 +85,9 @@ Use the 'think' tool to:
       tools: mcpTools,
       onStepFinish: async (stepResult) => {
         console.log("Step result:", stepResult);
-        updateStatus?.("Using tools to get information...");
+        if (stepResult.finishReason !== 'stop') {
+          updateStatus?.("Using tools to get information...");
+        }
       }
     });
 
