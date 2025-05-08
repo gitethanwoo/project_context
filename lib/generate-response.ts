@@ -14,6 +14,9 @@ export const generateResponse = async (
       transport: {
         type: 'sse',
         url: 'https://remote-mcp-server-authless.servantlabs.workers.dev/sse',
+        headers: {
+          Authorization: `Bearer ${process.env.MCP_API_KEY}`,
+        },
       },
     });
     // Get MCP tools
