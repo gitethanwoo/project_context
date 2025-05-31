@@ -226,22 +226,13 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         const startTime = formatTime(transcriptFile.recording_start);
         const endTime = formatTime(transcriptFile.recording_end);
 
-        const MAX_SUMMARY_LENGTH = 2500; // Max characters for summary in Slack
-        let displaySummary = summary;
-        let truncationNote = "";
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://servantcontext.vercel.app'; // Fallback URL
+        const viewSummaryLink = `<${appUrl}/api/view-summary?id=${transcriptId}|View Full Summary>`;
 
-        if (summary.length > MAX_SUMMARY_LENGTH) {
-          displaySummary = summary.substring(0, MAX_SUMMARY_LENGTH) + "...";
-          truncationNote = "\n\n_(Summary truncated due to length. Full summary available in the database.)_";
-        }
+        // Show a snippet of the summary, e.g., first 200 chars, as the link is the primary way to view
+        const summarySnippet = summary.substring(0, 200) + (summary.length > 200 ? "..." : "");
 
-        const fallbackText = `Here's a summary of your call
-Meeting Name: ${object.topic || 'Untitled Meeting'}
-Time: From ${startTime} to ${endTime}
-
-${displaySummary}${truncationNote}
-
-Note: Only you can see this as the meeting host. Please share with the channel for context!`;
+        const fallbackText = `Here's a summary of your call: ${object.topic || 'Untitled Meeting'} (${startTime} - ${endTime}). ${summarySnippet} ${viewSummaryLink}`;
 
         await slack.chat.postMessage({
           channel: slackResponse.user.id,
@@ -254,7 +245,9 @@ Note: Only you can see this as the meeting host. Please share with the channel f
                 text: `*Meeting Summary: ${object.topic || 'Untitled Meeting'}*
 *Time:* ${startTime} - ${endTime}
 
-${displaySummary}${truncationNote}
+${summarySnippet}
+
+${viewSummaryLink}
 
 _Note: This meeting was deemed relevant for Servant's knowledge base. You may delete it if you don't want to keep it._`
               }
