@@ -99,6 +99,30 @@ export async function POST(request: Request) {
 
                 console.log(`Received request to delete transcript ID: ${transcriptId} by user ${userId}`);
 
+                // First, get the meeting topic before deletion for confirmation message
+                const { data: transcriptData, error: fetchError } = await supabase
+                    .from('transcripts')
+                    .select('topic')
+                    .eq('id', transcriptId)
+                    .single();
+
+                if (fetchError) {
+                    console.error(`Error fetching transcript ${transcriptId}:`, fetchError);
+                    if (userId && slack) {
+                        await slack.chat.postEphemeral({
+                            channel: payload.channel.id,
+                            user: userId,
+                            text: `Sorry, I couldn't find the transcript (ID: ${transcriptId}). It may have already been deleted.`
+                        });
+                    }
+                    return new Response(JSON.stringify({ error: 'Transcript not found' }), {
+                        status: 404,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+
+                const meetingTopic = transcriptData?.topic || 'Untitled Meeting';
+
                 // Perform deletion in Supabase
                 const { error: deleteError } = await supabase
                     .from('transcripts')
@@ -108,11 +132,10 @@ export async function POST(request: Request) {
                 if (deleteError) {
                     console.error(`Error deleting transcript ${transcriptId}:`, deleteError);
                      if (userId && slack) {
-                        // Ephemeral message sending remains the same
                         await slack.chat.postEphemeral({
                              channel: payload.channel.id,
                              user: userId,
-                             text: `Sorry, I couldn't delete the transcript (ID: ${transcriptId}). Error: ${deleteError.message}`
+                             text: `Sorry, I couldn't delete the transcript "${meetingTopic}" (ID: ${transcriptId}). Error: ${deleteError.message}`
                         });
                      }
                      return new Response(JSON.stringify({ error: 'Failed to delete transcript' }), {
@@ -123,17 +146,25 @@ export async function POST(request: Request) {
 
                 console.log(`Successfully deleted transcript ID: ${transcriptId}`);
 
-                // Send ephemeral confirmation (remains the same)
+                // Send regular confirmation message (visible to everyone)
                  if (userId && slack) {
                     try {
-                        await slack.chat.postEphemeral({
+                        await slack.chat.postMessage({
                             channel: payload.channel.id,
-                            user: userId,
-                            text: `Transcript (ID: ${transcriptId}) has been successfully deleted.`
+                            text: `✅ Meeting transcript "${meetingTopic}" has been successfully deleted from the knowledge base.`,
+                            blocks: [
+                                {
+                                    type: 'section',
+                                    text: {
+                                        type: 'mrkdwn',
+                                        text: `✅ Meeting transcript *"${meetingTopic}"* has been successfully deleted from the knowledge base.`
+                                    }
+                                }
+                            ]
                         });
-                        console.log(`Sent ephemeral confirmation to user ${userId}`);
+                        console.log(`Sent deletion confirmation for "${meetingTopic}" to channel ${payload.channel.id}`);
                     } catch (slackError) {
-                        console.error('Error sending Slack ephemeral confirmation:', slackError);
+                        console.error('Error sending Slack confirmation:', slackError);
                     }
                  }
 
