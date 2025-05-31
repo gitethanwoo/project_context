@@ -1,7 +1,8 @@
 import { WebClient } from '@slack/web-api';
-import { generateSummaryBasic } from './generate-summary';
+import { generateSummaryWithRelevance } from './generate-summary';
 import { cleanVTTTranscript } from './transcript-utils';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { generateComprehensiveAnalysis, extractParticipantsFromCleanedText } from './transcript-analysis';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -112,27 +113,6 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       return;
     }
 
-    // Check if we already have a transcript with this recording time
-    // Use explicit format casting to match database storage format
-    const { data: existingTranscripts, error: transcriptError } = await supabase
-      .from('transcripts')
-      .select('id, summary')
-      .eq('meeting_id', object.id)  // Use meeting_id directly for first check
-      .eq('recording_start', transcriptFile.recording_start)
-      .eq('recording_end', transcriptFile.recording_end);
-      
-    // Log any error from the initial transcript check
-    if (transcriptError) {
-      console.warn('Supabase error checking for existing transcript:', transcriptError);
-      // Decide if we should return or continue; for now, let's continue
-    }
-      
-    if (existingTranscripts && existingTranscripts.length > 0) {
-      // We already processed this transcript
-      console.log(`Skipping duplicate webhook for meeting "${object.topic}" - transcript already exists (id: ${existingTranscripts[0].id})`);
-      return;
-    }
-    
     // Check if this SPECIFIC meeting instance already exists in our database
     // Using both zoom_meeting_id AND zoom_meeting_uuid to differentiate between PMR instances
     let { data: existingMeeting, error: meetingCheckError } = await supabase
@@ -211,8 +191,24 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     
     // Generate summary
     console.log('Generating summary...');
-    const summary = await generateSummaryBasic(cleanedTranscript);
-    
+    const { summary, isRelevant, reasoning } = await generateSummaryWithRelevance(cleanedTranscript);
+
+    if (!isRelevant) {
+      console.log('Transcript deemed NOT relevant (from summary call). Reason:', reasoning);
+      return; // Skip DB insert and Slack DM
+    }
+
+    // -----------------------------
+    // New: extract structured metadata (meeting type, participants, projects, clients)
+    // -----------------------------
+    console.log('Extracting metadata...');
+    const extractedParticipants = extractParticipantsFromCleanedText(cleanedTranscript);
+    const analysis = await generateComprehensiveAnalysis({
+      summary,
+      cleanedTranscript,
+      participants: extractedParticipants,
+    });
+
     // Save to database if we have a meeting ID
     if (meetingId) {
       const transcriptData = {
@@ -225,7 +221,14 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
           raw: rawTranscript,
           cleaned: cleanedTranscript,
         },
-        summary: summary // Store in dedicated column for easier querying
+        summary: summary, // Dedicated column for easier querying
+        extracted_participants: extractedParticipants,
+        is_relevant: isRelevant,
+        relevance_reasoning: reasoning,
+        meeting_type: analysis.meetingType,
+        external_participants: analysis.identifiedExternalParticipants,
+        projects: analysis.projects,
+        clients: analysis.clients,
       };
       
       // Modify the insert to return the id of the new record
