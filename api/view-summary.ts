@@ -10,17 +10,22 @@ export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
 ) {
-  const { id } = request.query;
+  const { id, secret } = request.query;
 
   if (!id || typeof id !== 'string') {
     response.setHeader('Content-Type', 'text/plain');
     return response.status(400).send('Transcript ID is required.');
   }
 
+  if (!secret || typeof secret !== 'string') {
+    response.setHeader('Content-Type', 'text/plain');
+    return response.status(401).send('Access token is required.');
+  }
+
   try {
     const { data: transcript, error } = await supabase
       .from('transcripts')
-      .select('topic, summary, transcript_content') // Select topic and summary, maybe raw cleaned transcript later
+      .select('topic, summary, transcript_content, view_secret') // Select view_secret
       .eq('id', id)
       .single();
 
@@ -33,6 +38,12 @@ export default async function handler(
     if (!transcript) {
       response.setHeader('Content-Type', 'text/plain');
       return response.status(404).send('Transcript summary not found.');
+    }
+
+    // Verify the secret
+    if (transcript.view_secret !== secret) {
+        response.setHeader('Content-Type', 'text/plain');
+        return response.status(403).send('Invalid access token.');
     }
 
     const topic = transcript.topic || 'Meeting Summary';

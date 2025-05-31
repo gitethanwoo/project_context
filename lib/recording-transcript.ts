@@ -3,6 +3,7 @@ import { generateSummaryWithRelevance } from './generate-summary';
 import { cleanVTTTranscript } from './transcript-utils';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { generateComprehensiveAnalysis, extractParticipantsFromCleanedText } from './transcript-analysis';
+import crypto from 'crypto'; // Added for UUID generation
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -159,6 +160,9 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       participants: extractedParticipants,
     });
 
+    // Generate a unique secret for viewing
+    const viewSecret = crypto.randomUUID();
+
     // Save transcript with embedded meeting metadata (no separate meetings table needed)
     const transcriptData = {
       zoom_meeting_id: object.id,
@@ -184,6 +188,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       external_participants: analysis.identifiedExternalParticipants,
       projects: analysis.projects,
       clients: analysis.clients,
+      view_secret: viewSecret, // Store the secret
     };
     
     const { data: insertedTranscript, error: insertError } = await supabase
@@ -227,7 +232,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
         const endTime = formatTime(transcriptFile.recording_end);
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://servantcontext.vercel.app'; // Fallback URL
-        const viewSummaryLink = `<${appUrl}/api/view-summary?id=${transcriptId}|View Full Summary>`;
+        const viewSummaryLink = `<${appUrl}/api/view-summary?id=${transcriptId}&secret=${viewSecret}|View Full Summary>`; // Add secret to link
 
         // Show a snippet of the summary, e.g., first 200 chars, as the link is the primary way to view
         const summarySnippet = summary.substring(0, 200) + (summary.length > 200 ? "..." : "");
