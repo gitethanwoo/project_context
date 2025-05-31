@@ -93,9 +93,19 @@ Extended `transcriptData` to include:
 
 #### Before
 ```sql
+CREATE TABLE meetings (
+  id serial PRIMARY KEY,
+  zoom_meeting_id varchar,
+  zoom_meeting_uuid varchar,
+  zoom_user_id varchar,
+  topic varchar,
+  start_time timestamp,
+  duration integer
+);
+
 CREATE TABLE transcripts (
   id bigint PRIMARY KEY,
-  meeting_id integer,
+  meeting_id integer REFERENCES meetings(id),
   recording_start timestamp,
   recording_end timestamp,
   transcript_content jsonb,
@@ -103,13 +113,21 @@ CREATE TABLE transcripts (
 );
 ```
 
-#### After  
+#### After - Simplified Single Table
 ```sql
 CREATE TABLE transcripts (
   id bigint PRIMARY KEY,
-  meeting_id integer,
+  zoom_meeting_id varchar,
+  zoom_meeting_uuid varchar,
+  zoom_user_id varchar,
+  topic varchar,
+  start_time timestamp,
+  duration integer,
+  host_email varchar,
   recording_start timestamp,
   recording_end timestamp,
+  download_url varchar,
+  transcript_status varchar,
   transcript_content jsonb,
   summary text,
   extracted_participants text[],
@@ -121,6 +139,48 @@ CREATE TABLE transcripts (
   clients text[]
 );
 ```
+
+**Key Simplifications**:
+- ✅ **Single table**: No foreign key relationships to manage
+- ✅ **Embedded metadata**: Zoom meeting info stored directly with transcript
+- ✅ **Fewer failure points**: No separate table creation/lookup
+- ✅ **Simpler queries**: Everything in one place
+- ✅ **Easier maintenance**: One schema to manage
+
+#### Required Database Migration
+
+To update your existing transcripts table to support the new simplified schema, run:
+
+```sql
+-- Add new Zoom meeting metadata columns
+ALTER TABLE transcripts 
+ADD COLUMN zoom_meeting_id varchar,
+ADD COLUMN zoom_meeting_uuid varchar,
+ADD COLUMN zoom_user_id varchar,
+ADD COLUMN topic varchar,
+ADD COLUMN start_time timestamp,
+ADD COLUMN duration integer,
+ADD COLUMN host_email varchar,
+ADD COLUMN download_url varchar,
+ADD COLUMN transcript_status varchar DEFAULT 'completed';
+
+-- Add new AI analysis columns  
+ALTER TABLE transcripts
+ADD COLUMN extracted_participants text[],
+ADD COLUMN is_relevant boolean,
+ADD COLUMN relevance_reasoning text,
+ADD COLUMN meeting_type varchar CHECK (meeting_type IN ('internal', 'external', 'unknown')),
+ADD COLUMN external_participants text[],
+ADD COLUMN projects text[],
+ADD COLUMN clients text[];
+
+-- Drop the meetings table dependency (if it exists)
+-- Note: Only run this if you have a meetings table and no other dependencies
+-- ALTER TABLE transcripts DROP COLUMN meeting_id;
+-- DROP TABLE meetings;
+```
+
+#### Benefits of Simplified Schema
 
 ## Efficiency Improvements
 
@@ -184,20 +244,38 @@ CREATE TABLE transcripts (
 
 **Error**: `value "82798479402" is out of range for type integer`
 
-**Solution**: Removed the flawed initial duplicate check since proper duplicate detection already exists later in the flow using the correct database `meetingId`.
+**Solution**: 
+1. Removed the flawed initial duplicate check 
+2. **Eliminated meetings table dependency entirely** - now store Zoom metadata directly in transcripts table
+3. Use Zoom meeting ID + UUID + recording times for duplicate detection
 
-**Code Change**:
+**Code Changes**:
 ```typescript
-// REMOVED: Broken duplicate check
-// const { data: existingTranscripts } = await supabase
-//   .from('transcripts') 
-//   .eq('meeting_id', object.id) // ❌ Wrong: Zoom ID vs DB ID
+// REMOVED: Meetings table lookup and creation
+// let { data: existingMeeting } = await supabase.from('meetings')...
 
-// KEPT: Proper duplicate check (later in flow)
-// const { data: finalCheck } = await supabase
-//   .from('transcripts')
-//   .eq('meeting_id', meetingId) // ✅ Correct: DB ID vs DB ID
+// ADDED: Direct transcript duplicate check  
+const { data: existingTranscripts } = await supabase
+  .from('transcripts')
+  .eq('zoom_meeting_id', object.id)    // ✅ Store Zoom ID directly
+  .eq('zoom_meeting_uuid', object.uuid)
+  .eq('recording_start', transcriptFile.recording_start)
+  .eq('recording_end', transcriptFile.recording_end);
+
+// SIMPLIFIED: Single table insert with embedded metadata
+const transcriptData = {
+  zoom_meeting_id: object.id,  // ✅ Direct storage
+  zoom_meeting_uuid: object.uuid,
+  topic: object.topic,
+  // ... all other fields in one table
+};
 ```
+
+**Benefits**:
+- ✅ **No integer overflow**: Zoom IDs stored as varchar
+- ✅ **Simpler architecture**: Single table, no foreign keys  
+- ✅ **Fewer failure points**: No separate table operations
+- ✅ **Better performance**: No joins required
 
 ## Future Enhancements
 
