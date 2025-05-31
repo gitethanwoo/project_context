@@ -225,11 +225,21 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       if (slackResponse.ok && slackResponse.user && slackResponse.user.id) {
         const startTime = formatTime(transcriptFile.recording_start);
         const endTime = formatTime(transcriptFile.recording_end);
+
+        const MAX_SUMMARY_LENGTH = 2500; // Max characters for summary in Slack
+        let displaySummary = summary;
+        let truncationNote = "";
+
+        if (summary.length > MAX_SUMMARY_LENGTH) {
+          displaySummary = summary.substring(0, MAX_SUMMARY_LENGTH) + "...";
+          truncationNote = "\n\n_(Summary truncated due to length. Full summary available in the database.)_";
+        }
+
         const fallbackText = `Here's a summary of your call
 Meeting Name: ${object.topic || 'Untitled Meeting'}
 Time: From ${startTime} to ${endTime}
 
-${summary}
+${displaySummary}${truncationNote}
 
 Note: Only you can see this as the meeting host. Please share with the channel for context!`;
 
@@ -244,9 +254,9 @@ Note: Only you can see this as the meeting host. Please share with the channel f
                 text: `*Meeting Summary: ${object.topic || 'Untitled Meeting'}*
 *Time:* ${startTime} - ${endTime}
 
-${summary}
+${displaySummary}${truncationNote}
 
-_Note: Only you can see this as the meeting host. Please share with the channel for context!_`
+_Note: This meeting was deemed relevant for Servant's knowledge base. You may delete it if you don't want to keep it._`
               }
             },
             {

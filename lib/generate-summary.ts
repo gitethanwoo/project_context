@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { generateText, generateObject } from "ai";
+import { generateObject } from "ai";
 import { z } from "zod";
 
 
@@ -91,13 +91,9 @@ EXCLUDE meetings that are:
 • Personal counseling or interpersonal conflict resolution
 </relevance_criteria>
 
-<transcript>`,
-    messages: [
-      {
-        role: "user",
-        content: transcript,
-      },
-    ],
+<transcript>
+${transcript}
+</transcript>`,
   });
 
   return object;
