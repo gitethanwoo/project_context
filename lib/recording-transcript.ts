@@ -215,12 +215,6 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     const transcriptId = insertedTranscript.id;
     console.log(`Transcript saved to database for meeting "${object.topic}" with ID: ${transcriptId}`);
 
-    // For testing: only send to test users
-    if (!['ethan@servant.io', 'joe@servant.io', 'jake@servant.io', 'arlene@servant.io', 'matt@servant.io'].includes(object.host_email)) {
-      console.log('Skipping Slack message - not test user:', object.host_email);
-      return;
-    }
-
     // Send Slack notification
     try {
       const slackResponse = await slack.users.lookupByEmail({
