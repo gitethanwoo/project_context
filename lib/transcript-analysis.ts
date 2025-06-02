@@ -123,7 +123,7 @@ ${ComprehensiveAnalysisSchema.toString()}`;
   const { object } = await generateObject({
     model: openai('o4-mini'),
     schema: ComprehensiveAnalysisSchema,
-    temperature: 0.7,
+    temperature: 1.0,
     prompt,
   });
 
