@@ -356,6 +356,42 @@ const transcriptData = {
 
 ---
 
+## Additional Enhancement: Verified Participant Emails
+
+### Overview
+Added automatic extraction of verified participant emails from Zoom API to complement the AI-extracted participant names from transcripts.
+
+### Implementation Details
+
+**New Zoom API Integration** (`lib/recording-transcript.ts`):
+- Created `ZoomAPI` class for Server-to-Server OAuth authentication
+- Fetches participant emails from Zoom's past meeting participants API
+- Gracefully handles missing credentials, rate limiting, and old meetings
+- Stores verified emails in new `verified_participant_emails` database column
+
+**Key Benefits**:
+1. **Accuracy**: Zoom-verified email addresses vs. AI-extracted names
+2. **Searchability**: Can find meetings by participant email address
+3. **Analytics**: Track meeting participation patterns across the organization
+4. **Compliance**: Maintain audit trail of meeting attendees
+
+**Required Environment Variables**:
+```
+ZOOM_ACCOUNT_ID=your-zoom-account-id
+ZOOM_CLIENT_ID=your-zoom-client-id  
+ZOOM_CLIENT_SECRET=your-zoom-client-secret
+```
+
+**Error Handling**:
+- Missing credentials: Returns empty array, continues processing
+- Rate limiting: Returns empty array to avoid blocking
+- Old meetings (404): Returns empty array
+- Other errors: Logs error, returns empty array
+
+This enhancement maintains the system's resilience while adding valuable verified participant data when available.
+
+---
+
 ## Conclusion
 
 The refactored system successfully balances efficiency, accuracy, and maintainability while preparing the foundation for a robust company knowledge base. The modular approach ensures both current webhook processing and future batch operations can leverage the same high-quality AI-powered analysis. 

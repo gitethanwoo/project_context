@@ -67,14 +67,24 @@ OPENAI_API_KEY=your-openai-api-key
 
 # Zoom Webhook Secret
 ZOOM_WEBHOOK_SECRET_TOKEN=your-zoom-webhook-secret
+
+# Zoom API Credentials (for fetching verified participant emails)
+ZOOM_ACCOUNT_ID=your-zoom-account-id
+ZOOM_CLIENT_ID=your-zoom-client-id
+ZOOM_CLIENT_SECRET=your-zoom-client-secret
 ```
 
 Replace the placeholder values with your actual tokens.
 
-### 5. Configure Zoom Webhook
+### 5. Configure Zoom Webhook & OAuth App
 
 1. Go to the [Zoom App Marketplace](https://marketplace.zoom.us/)
-2. Create a new app with the following settings:
+2. Create a new Server-to-Server OAuth app:
+   - App Name: Your App Name
+   - App Type: Server-to-Server OAuth
+   - Scopes needed: `recording:read`, `meeting:read:past_meeting`
+   - Note down your Account ID, Client ID, and Client Secret
+3. Configure Webhook in the same app:
    - Event Subscriptions enabled
    - Add the following event: `recording.transcript_completed`
    - Set the endpoint URL to: `https://your-app.vercel.app/api/notification`

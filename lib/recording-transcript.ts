@@ -10,6 +10,126 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''; // Use service role key for server-side operations
 const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
+// Zoom API Helper Class
+class ZoomAPI {
+  private accountId: string;
+  private clientId: string;
+  private clientSecret: string;
+  private accessToken: string | null = null;
+
+  constructor() {
+    this.accountId = process.env.ZOOM_ACCOUNT_ID || '';
+    this.clientId = process.env.ZOOM_CLIENT_ID || '';
+    this.clientSecret = process.env.ZOOM_CLIENT_SECRET || '';
+    
+    if (!this.accountId || !this.clientId || !this.clientSecret) {
+      console.warn('⚠️  Zoom API credentials not fully configured. Verified participant emails will not be fetched.');
+    }
+  }
+
+  // Get OAuth access token
+  async getAccessToken(): Promise<string> {
+    try {
+      const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+      
+      const response = await fetch('https://zoom.us/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `grant_type=account_credentials&account_id=${this.accountId}`
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get access token: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      this.accessToken = data.access_token;
+      console.log('✅ Successfully got Zoom access token');
+      return data.access_token;
+    } catch (error) {
+      console.error('❌ Error getting Zoom access token:', error);
+      throw error;
+    }
+  }
+
+  // Encode UUID if it contains special characters
+  encodeUUID(uuid: string): string {
+    if (uuid.includes('/') || uuid.includes('//')) {
+      return encodeURIComponent(encodeURIComponent(uuid));
+    }
+    return uuid;
+  }
+
+  // Get past meeting participants
+  async getPastMeetingParticipants(meetingUUID: string): Promise<string[]> {
+    try {
+      // Check if credentials are configured
+      if (!this.accountId || !this.clientId || !this.clientSecret) {
+        console.log('   Zoom API credentials not configured - skipping participant verification');
+        return [];
+      }
+      
+      if (!this.accessToken) {
+        await this.getAccessToken();
+      }
+
+      const encodedUUID = this.encodeUUID(meetingUUID);
+      const url = `https://api.zoom.us/v2/past_meetings/${encodedUUID}/participants`;
+      
+      console.log(`🔍 Fetching participants for meeting UUID: ${meetingUUID}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log('   Meeting not found or too old');
+          return [];
+        }
+        if (response.status === 429) {
+          console.log('   Rate limited by Zoom API - returning empty array to not block processing');
+          return [];
+        }
+        throw new Error(`Failed to get meeting participants: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.participants || data.participants.length === 0) {
+        console.log('   ⚠️  No participant data available');
+        return [];
+      }
+
+      // Extract unique emails (filter out null/undefined emails)
+      const emailSet = new Set<string>();
+      data.participants.forEach((p: any) => {
+        if (p.user_email && typeof p.user_email === 'string' && p.user_email.trim() !== '') {
+          emailSet.add(p.user_email);
+        }
+      });
+      const participantEmails = Array.from(emailSet);
+
+      console.log(`   👥 Found ${participantEmails.length} unique participants with emails`);
+      return participantEmails;
+      
+    } catch (error) {
+      console.error('❌ Error getting meeting participants:', error);
+      // Return empty array on error to not block the transcript processing
+      return [];
+    }
+  }
+}
+
+// Initialize Zoom API client
+const zoomAPI = new ZoomAPI();
+
 interface TranscriptFile {
   id: string;
   meeting_id: string;
@@ -160,6 +280,11 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       participants: extractedParticipants,
     });
 
+    // Fetch verified participant emails from Zoom API
+    console.log('Fetching verified participant emails from Zoom...');
+    const verifiedParticipantEmails = await zoomAPI.getPastMeetingParticipants(object.uuid);
+    console.log(`Found ${verifiedParticipantEmails.length} verified participant emails`);
+
     // Generate a unique secret for viewing
     const viewSecret = crypto.randomUUID();
 
@@ -189,6 +314,7 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
       projects: analysis.projects,
       clients: analysis.clients,
       view_secret: viewSecret, // Store the secret
+      verified_participant_emails: verifiedParticipantEmails, // Add verified emails from Zoom API
     };
     
     const { data: insertedTranscript, error: insertError } = await supabase
