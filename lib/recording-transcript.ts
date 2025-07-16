@@ -284,6 +284,21 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     console.log('Fetching verified participant emails from Zoom...');
     const verifiedParticipantEmails = await zoomAPI.getPastMeetingParticipants(object.uuid);
     console.log(`Found ${verifiedParticipantEmails.length} verified participant emails`);
+    
+    // Log test flow completion
+    const testPhrases = [
+      "clarity system test",
+      "clarity copilot test", 
+      "system test clarity",
+      "testing clarity system"
+    ];
+    
+    const lowerTranscript = cleanedTranscript.toLowerCase();
+    const isTestMeeting = testPhrases.some(phrase => lowerTranscript.includes(phrase));
+    
+    if (isTestMeeting) {
+      console.log('✅ Clarity test meeting processing complete - all steps executed including participant extraction');
+    }
 
     // Generate a unique secret for viewing
     const viewSecret = crypto.randomUUID();

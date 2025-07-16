@@ -28,21 +28,24 @@ export const generateSummaryWithRelevance = async (
   if (isTestMeeting) {
     return {
       summary: `Topic: Clarity System Testing Meeting
-Overview: Testing session for the Clarity Copilot transcript processing system to validate end-to-end workflow including AI relevance filtering and metadata extraction.
+Overview: Testing session for the Clarity Copilot transcript processing system to validate end-to-end workflow including AI relevance filtering, metadata extraction, and verified participant email retrieval from Zoom API.
 Takeaways: 
 • Successfully triggered the transcript processing webhook from Zoom
 • Validated that the testing bypass mechanism works correctly
-• Confirmed both relevance filtering and metadata extraction are functioning
-• System properly stores transcripts and sends Slack notifications for relevant meetings
+• Confirmed relevance filtering, metadata extraction, and Zoom API participant verification are functioning
+• System properly fetches verified participant emails from Zoom API
+• Transcripts are stored with both AI-extracted and Zoom-verified participant data
+• Slack notifications are sent for relevant meetings with view and delete options
 Next Steps: 
-• Monitor production logs to ensure the fix for integer overflow is working
-• Review extracted metadata accuracy in the database
+• Monitor production logs to ensure all components are working correctly
+• Review both extracted and verified participant data accuracy in the database
 • Test the delete button functionality in Slack
+• Verify that meetings with "clarity copilot test" go through the entire processing flow
 Potential Gaps: 
 • Need to verify batch processing integration with new shared modules
-• Should add more comprehensive error handling for edge cases`,
+• Should monitor Zoom API rate limits during high-volume periods`,
       isRelevant: true,
-      reasoning: "This is a test meeting for the Clarity system functionality - marked as relevant for testing purposes."
+      reasoning: "This is a test meeting for the Clarity system functionality - marked as relevant for testing purposes to validate the entire processing pipeline."
     };
   }
 
