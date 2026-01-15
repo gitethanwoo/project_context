@@ -38,6 +38,39 @@ interface ZoomWebhookPayload {
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
+  const webhookSecret = process.env.ZOOM_WEBHOOK_SECRET_TOKEN;
+  const signature = request.headers.get('x-zm-signature');
+  const timestamp = request.headers.get('x-zm-request-timestamp');
+
+  if (!webhookSecret) {
+    return new Response(JSON.stringify({ error: 'Server configuration error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  if (!signature || !timestamp) {
+    return new Response(JSON.stringify({ error: 'Missing Zoom webhook signature headers' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  const message = `v0:${timestamp}:${rawBody}`;
+  const hashForVerify = crypto.createHmac('sha256', webhookSecret).update(message).digest('hex');
+  const expectedSignature = `v0=${hashForVerify}`;
+  const expectedBuffer = Buffer.from(expectedSignature);
+  const signatureBuffer = Buffer.from(signature);
+  const isValidSignature = expectedBuffer.length === signatureBuffer.length
+    && crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+
+  if (!isValidSignature) {
+    return new Response(JSON.stringify({ error: 'Invalid Zoom webhook signature' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
   const payload = JSON.parse(rawBody) as ZoomWebhookPayload & { status?: string };
 
   // Debug logging - only essential info
@@ -71,17 +104,8 @@ export async function POST(request: Request) {
       }
 
       const plainToken = payload.payload.plainToken;
-      const secret = process.env.ZOOM_WEBHOOK_SECRET_TOKEN;
-      
-      if (!secret) {
-        return new Response(JSON.stringify({ error: 'Server configuration error' }), { 
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
       const hashForValidation = crypto
-        .createHmac('sha256', secret)
+        .createHmac('sha256', webhookSecret)
         .update(plainToken)
         .digest('hex');
 

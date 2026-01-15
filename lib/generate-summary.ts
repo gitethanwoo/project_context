@@ -14,6 +14,10 @@ export type SummaryRelevanceResult = z.infer<typeof SummaryRelevanceSchema>;
 export const generateSummaryWithRelevance = async (
   transcript: string,
 ): Promise<SummaryRelevanceResult> => {
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const maxAttempts = 3;
+  const retryDelayMs = 750;
+
   // Testing bypass: detect natural speech variations (case-insensitive)
   const testPhrases = [
     "clarity system test",
@@ -49,10 +53,12 @@ Potential Gaps:
     };
   }
 
-  const { object } = await generateObject({
-    model: openai("gpt-4.1-mini-2025-04-14"),
-    schema: SummaryRelevanceSchema,
-    prompt: `<role>
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: openai("gpt-4.1-mini-2025-04-14"),
+        schema: SummaryRelevanceSchema,
+        prompt: `<role>
 You are a professional meeting summarizer for Servant.io, a faith-based consulting company that is often working with clients that are also faith-based organizations, though their industries can vary widely between technology, healthcare, nonprofits, and more.
 </role>
 
@@ -97,7 +103,17 @@ EXCLUDE meetings that are:
 <transcript>
 ${transcript}
 </transcript>`,
-  });
+      });
 
-  return object;
+      return object;
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      console.warn(`AI summary failed (attempt ${attempt}/${maxAttempts}) - retrying in ${retryDelayMs}ms`, error);
+      await sleep(retryDelayMs);
+    }
+  }
+
+  throw new Error('Failed to generate summary after retries');
 }; 

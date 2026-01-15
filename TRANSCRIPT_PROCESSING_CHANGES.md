@@ -174,6 +174,10 @@ ADD COLUMN external_participants text[],
 ADD COLUMN projects text[],
 ADD COLUMN clients text[];
 
+-- Prevent duplicate transcript inserts for the same recording
+CREATE UNIQUE INDEX IF NOT EXISTS transcripts_unique_recording_idx
+ON transcripts (zoom_meeting_id, zoom_meeting_uuid, recording_start, recording_end);
+
 -- Drop the meetings table dependency (if it exists)
 -- Note: Only run this if you have a meetings table and no other dependencies
 -- ALTER TABLE transcripts DROP COLUMN meeting_id;

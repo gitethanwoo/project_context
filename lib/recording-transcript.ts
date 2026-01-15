@@ -16,6 +16,7 @@ class ZoomAPI {
   private clientId: string;
   private clientSecret: string;
   private accessToken: string | null = null;
+  private accessTokenExpiresAt: number | null = null;
 
   constructor() {
     this.accountId = process.env.ZOOM_ACCOUNT_ID || '';
@@ -47,6 +48,7 @@ class ZoomAPI {
       
       const data = await response.json();
       this.accessToken = data.access_token;
+      this.accessTokenExpiresAt = Date.now() + (data.expires_in * 1000);
       console.log('✅ Successfully got Zoom access token');
       return data.access_token;
     } catch (error) {
@@ -72,7 +74,7 @@ class ZoomAPI {
         return [];
       }
       
-      if (!this.accessToken) {
+      if (!this.accessToken || (this.accessTokenExpiresAt !== null && Date.now() >= this.accessTokenExpiresAt)) {
         await this.getAccessToken();
       }
 
@@ -81,12 +83,20 @@ class ZoomAPI {
       
       console.log(`🔍 Fetching participants for meeting UUID: ${meetingUUID}`);
       
-      const response = await fetch(url, {
+      const fetchParticipants = () => fetch(url, {
         headers: {
           'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         }
       });
+
+      let response = await fetchParticipants();
+
+      if (response.status === 401) {
+        console.log('   Zoom access token expired or invalid - refreshing token');
+        await this.getAccessToken();
+        response = await fetchParticipants();
+      }
 
       if (!response.ok) {
         if (response.status === 404) {

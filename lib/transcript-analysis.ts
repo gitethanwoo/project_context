@@ -61,6 +61,10 @@ export async function generateComprehensiveAnalysis({
   cleanedTranscript,
   participants,
 }: AnalysisInput): Promise<ComprehensiveAnalysis> {
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const maxAttempts = 3;
+  const retryDelayMs = 750;
+
   // Testing bypass: detect natural speech variations (case-insensitive)
   const testPhrases = [
     "clarity system test",
@@ -120,12 +124,24 @@ Known Servant clients: ACU, AMFM, Bethel Tech, BibleProject, Business Bible, CAS
 Provide your assessment strictly as a JSON object matching this TypeScript type:
 ${ComprehensiveAnalysisSchema.toString()}`;
 
-  const { object } = await generateObject({
-    model: openai('o4-mini'),
-    schema: ComprehensiveAnalysisSchema,
-    temperature: 1.0,
-    prompt,
-  });
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: openai('o4-mini'),
+        schema: ComprehensiveAnalysisSchema,
+        temperature: 1.0,
+        prompt,
+      });
 
-  return object;
-} 
+      return object;
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      console.warn(`AI analysis failed (attempt ${attempt}/${maxAttempts}) - retrying in ${retryDelayMs}ms`, error);
+      await sleep(retryDelayMs);
+    }
+  }
+
+  throw new Error('Failed to generate analysis after retries');
+}
