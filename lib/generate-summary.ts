@@ -1,6 +1,7 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { isTestMeeting } from "./transcript-utils";
 
 
 const SummaryRelevanceSchema = z.object({
@@ -18,34 +19,23 @@ export const generateSummaryWithRelevance = async (
   const maxAttempts = 3;
   const retryDelayMs = 750;
 
-  // Testing bypass: detect natural speech variations (case-insensitive)
-  const testPhrases = [
-    "clarity system test",
-    "clarity copilot test", 
-    "system test clarity",
-    "testing clarity system"
-  ];
-  
-  const lowerTranscript = transcript.toLowerCase();
-  const isTestMeeting = testPhrases.some(phrase => lowerTranscript.includes(phrase));
-  
-  if (isTestMeeting) {
+  if (isTestMeeting(transcript)) {
     return {
       summary: `Topic: Clarity System Testing Meeting
 Overview: Testing session for the Clarity Copilot transcript processing system to validate end-to-end workflow including AI relevance filtering, metadata extraction, and verified participant email retrieval from Zoom API.
-Takeaways: 
+Takeaways:
 • Successfully triggered the transcript processing webhook from Zoom
 • Validated that the testing bypass mechanism works correctly
 • Confirmed relevance filtering, metadata extraction, and Zoom API participant verification are functioning
 • System properly fetches verified participant emails from Zoom API
 • Transcripts are stored with both AI-extracted and Zoom-verified participant data
 • Slack notifications are sent for relevant meetings with view and delete options
-Next Steps: 
+Next Steps:
 • Monitor production logs to ensure all components are working correctly
 • Review both extracted and verified participant data accuracy in the database
 • Test the delete button functionality in Slack
 • Verify that meetings with "clarity copilot test" go through the entire processing flow
-Potential Gaps: 
+Potential Gaps:
 • Need to verify batch processing integration with new shared modules
 • Should monitor Zoom API rate limits during high-volume periods`,
       isRelevant: true,
@@ -116,4 +106,4 @@ ${transcript}
   }
 
   throw new Error('Failed to generate summary after retries');
-}; 
+};

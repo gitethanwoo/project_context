@@ -1,10 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''; // Use service role key for server-side operations
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '../lib/supabase';
 
 export default async function handler(
   request: VercelRequest,

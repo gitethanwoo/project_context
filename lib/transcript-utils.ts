@@ -3,6 +3,18 @@ interface CleanedMessage {
   text: string;
 }
 
+const TEST_MEETING_PHRASES = [
+  "clarity system test",
+  "clarity copilot test",
+  "system test clarity",
+  "testing clarity system",
+];
+
+export function isTestMeeting(transcript: string): boolean {
+  const lowerTranscript = transcript.toLowerCase();
+  return TEST_MEETING_PHRASES.some((phrase) => lowerTranscript.includes(phrase));
+}
+
 /**
  * Cleans a VTT transcript by removing timestamps and combining consecutive messages from the same speaker
  */

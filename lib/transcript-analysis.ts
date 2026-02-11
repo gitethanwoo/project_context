@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
+import { isTestMeeting } from './transcript-utils';
 
 // --------------------
 // Zod schema describing the structured AI output
@@ -65,18 +66,7 @@ export async function generateComprehensiveAnalysis({
   const maxAttempts = 3;
   const retryDelayMs = 750;
 
-  // Testing bypass: detect natural speech variations (case-insensitive)
-  const testPhrases = [
-    "clarity system test",
-    "clarity copilot test", 
-    "system test clarity",
-    "testing clarity system"
-  ];
-  
-  const lowerTranscript = cleanedTranscript.toLowerCase();
-  const isTestMeeting = testPhrases.some(phrase => lowerTranscript.includes(phrase));
-  
-  if (isTestMeeting) {
+  if (isTestMeeting(cleanedTranscript)) {
     return {
       meetingType: 'internal',
       identifiedExternalParticipants: [],

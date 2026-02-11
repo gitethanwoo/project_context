@@ -1,63 +1,11 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { WebClient } from '@slack/web-api';
-import crypto from 'crypto';
-
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''; // Use service role key for server-side operations
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
-
-// Initialize Slack client (optional, for sending ephemeral messages)
-const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
-
-// Get Slack signing secret from environment variables
-const slackSigningSecret = process.env.SLACK_SIGNING_SECRET;
-
-// Function to verify Slack request signature - needs slight adjustment for standard Request
-async function verifySlackRequest(request: Request): Promise<{ valid: boolean, bodyText: string }> {
-    if (!slackSigningSecret) {
-        console.error('SLACK_SIGNING_SECRET is not set.');
-        return { valid: false, bodyText: '' };
-    }
-
-    // Clone the request to read the body without consuming it for later use
-    const requestClone = request.clone();
-    const signature = requestClone.headers.get('x-slack-signature');
-    const timestamp = requestClone.headers.get('x-slack-request-timestamp');
-    const bodyText = await requestClone.text(); // Read body once as text
-
-    if (!signature || !timestamp) {
-        console.warn('Missing Slack signature or timestamp headers.');
-        return { valid: false, bodyText };
-    }
-
-    // Prevent replay attacks
-    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - (60 * 5);
-    if (parseInt(timestamp, 10) < fiveMinutesAgo) {
-        console.warn('Slack request timestamp is too old.');
-        return { valid: false, bodyText };
-    }
-
-    const sigBasestring = `v0:${timestamp}:${bodyText}`;
-    const calculatedSignature = `v0=${crypto
-        .createHmac('sha256', slackSigningSecret)
-        .update(sigBasestring, 'utf8')
-        .digest('hex')}`;
-
-     const valid = crypto.timingSafeEqual(Buffer.from(calculatedSignature, 'utf8'), Buffer.from(signature, 'utf8'));
-     if (!valid) {
-         console.warn('Slack signature verification failed.');
-     }
-
-    return { valid, bodyText };
-}
+import { supabase } from '../../lib/supabase';
+import { client as slack, isValidSlackRequest } from '../../lib/slack-utils';
 
 // Use standard Request and Response here
 export async function POST(request: Request) {
-
-    // Verify the request signature first
-    const { valid: isValidSlackRequest, bodyText } = await verifySlackRequest(request);
-     if (!isValidSlackRequest) {
+    const rawBody = await request.clone().text();
+    const validRequest = await isValidSlackRequest({ request, rawBody });
+     if (!validRequest) {
          // Use standard Response
          return new Response(JSON.stringify({ error: 'Invalid Slack signature' }), {
              status: 401,
@@ -66,9 +14,9 @@ export async function POST(request: Request) {
      }
 
     try {
-        // Need to parse the bodyText which contains the urlencoded form data
+        // Need to parse the raw body text which contains the urlencoded form data
         // Use URLSearchParams for standard parsing
-        const formData = new URLSearchParams(bodyText);
+        const formData = new URLSearchParams(rawBody);
         const payloadStr = formData.get('payload');
 
         if (!payloadStr) {
@@ -83,7 +31,7 @@ export async function POST(request: Request) {
 
         // Check if it's a block action event (button click)
         if (payload.type === 'block_actions') {
-            const deleteAction = payload.actions?.find((action: any) => action.action_id === 'delete_transcript');
+            const deleteAction = payload.actions?.find((action: { action_id?: string }) => action.action_id === 'delete_transcript');
 
             if (deleteAction) {
                 const transcriptId = parseInt(deleteAction.value, 10);

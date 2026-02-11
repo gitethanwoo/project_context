@@ -12,12 +12,16 @@ export async function POST(request: Request) {
   const payload = JSON.parse(rawBody);
   const requestType = payload.type as "url_verification" | "event_callback";
 
+  try {
+    await verifyRequest({ requestType, request, rawBody });
+  } catch {
+    return new Response("Invalid request", { status: 400 });
+  }
+
   // See https://api.slack.com/events/url_verification
   if (requestType === "url_verification") {
     return new Response(payload.challenge, { status: 200 });
   }
-
-  await verifyRequest({ requestType, request, rawBody });
 
   try {
     const botUserId = await getBotId();

@@ -1,14 +1,9 @@
-import { WebClient } from '@slack/web-api';
 import { generateSummaryWithRelevance } from './generate-summary';
 import { cleanVTTTranscript } from './transcript-utils';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { supabase } from './supabase';
 import { generateComprehensiveAnalysis, extractParticipantsFromCleanedText } from './transcript-analysis';
 import crypto from 'crypto'; // Added for UUID generation
-
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''; // Use service role key for server-side operations
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+import { client as slack } from './slack-utils';
 
 // Zoom API Helper Class
 class ZoomAPI {
@@ -170,9 +165,6 @@ interface TranscriptPayload {
   };
 }
 
-// Initialize Slack client
-const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
-
 async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -220,14 +212,13 @@ async function downloadTranscriptWithRetry(downloadUrl: string, downloadToken: s
 }
 
 function formatTime(isoString: string): string {
-  const date = new Date(isoString);
-  // Convert to EST (UTC-4)
-  const estDate = new Date(date.getTime() - (4 * 60 * 60 * 1000));
-  return `${estDate.toLocaleTimeString('en-US', { 
+  return new Date(isoString).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true 
-  })} EST`;
+    hour12: true,
+    timeZone: 'America/New_York',
+    timeZoneName: 'short',
+  });
 }
 
 export async function handleTranscriptCompleted(payload: TranscriptPayload, downloadToken?: string) {
@@ -295,21 +286,6 @@ export async function handleTranscriptCompleted(payload: TranscriptPayload, down
     const verifiedParticipantEmails = await zoomAPI.getPastMeetingParticipants(object.uuid);
     console.log(`Found ${verifiedParticipantEmails.length} verified participant emails`);
     
-    // Log test flow completion
-    const testPhrases = [
-      "clarity system test",
-      "clarity copilot test", 
-      "system test clarity",
-      "testing clarity system"
-    ];
-    
-    const lowerTranscript = cleanedTranscript.toLowerCase();
-    const isTestMeeting = testPhrases.some(phrase => lowerTranscript.includes(phrase));
-    
-    if (isTestMeeting) {
-      console.log('✅ Clarity test meeting processing complete - all steps executed including participant extraction');
-    }
-
     // Generate a unique secret for viewing
     const viewSecret = crypto.randomUUID();
 
