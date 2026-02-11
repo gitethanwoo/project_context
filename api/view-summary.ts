@@ -1,6 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabase } from '../lib/supabase';
 
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
@@ -52,7 +61,7 @@ export default async function handler(
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${topic}</title>
+        <title>${escapeHtml(topic)}</title>
         <style>
           body { font-family: sans-serif; line-height: 1.6; padding: 20px; margin: 0; background-color: #f4f4f4; color: #333; }
           .container { max-width: 800px; margin: auto; background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
@@ -62,8 +71,8 @@ export default async function handler(
       </head>
       <body>
         <div class="container">
-          <h1>${topic}</h1>
-          <pre>${summaryContent}</pre>
+          <h1>${escapeHtml(topic)}</h1>
+          <pre>${escapeHtml(summaryContent)}</pre>
         </div>
       </body>
       </html>

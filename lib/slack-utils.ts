@@ -2,9 +2,17 @@ import { WebClient } from '@slack/web-api';
 import { CoreMessage } from 'ai'
 import crypto from 'crypto'
 
-const signingSecret = process.env.SLACK_SIGNING_SECRET!
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
 
-export const client = new WebClient(process.env.SLACK_BOT_TOKEN);
+const signingSecret = requireEnv('SLACK_SIGNING_SECRET');
+
+export const client = new WebClient(requireEnv('SLACK_BOT_TOKEN'));
 
 // See https://api.slack.com/authentication/verifying-requests-from-slack
 export async function isValidSlackRequest({
