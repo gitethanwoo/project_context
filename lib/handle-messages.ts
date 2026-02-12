@@ -1,7 +1,7 @@
 import type {
   AssistantThreadStartedEvent,
   GenericMessageEvent,
-} from "@slack/web-api";
+} from "@slack/types";
 import { client, getThread, updateStatusUtil } from "./slack-utils";
 import { generateResponse } from "./generate-response";
 

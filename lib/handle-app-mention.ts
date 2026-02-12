@@ -1,4 +1,4 @@
-import { AppMentionEvent } from "@slack/web-api";
+import type { AppMentionEvent } from "@slack/types";
 import { client, getThread } from "./slack-utils";
 import { generateResponse } from "./generate-response";
 

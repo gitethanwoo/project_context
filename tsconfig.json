@@ -12,6 +12,7 @@
     "node_modules",
   ],
   "include": [
-    "api"
-, "lib/recording-transcript.ts"  ]
+    "api",
+    "lib"
+  ]
 }

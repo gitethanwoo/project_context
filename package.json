@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@ai-sdk/openai": "^1.1.14",
+    "@slack/types": "^2.20.0",
     "@slack/web-api": "^7.13.0",
     "@supabase/supabase-js": "^2.49.4",
     "@vercel/functions": "^2.0.0",
