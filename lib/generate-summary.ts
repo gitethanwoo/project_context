@@ -95,7 +95,7 @@ ${transcript}
 </transcript>`,
       });
 
-      return object;
+      return SummaryRelevanceSchema.parse(object);
     } catch (error) {
       if (attempt === maxAttempts) {
         throw error;

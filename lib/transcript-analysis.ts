@@ -123,7 +123,7 @@ ${ComprehensiveAnalysisSchema.toString()}`;
         prompt,
       });
 
-      return object;
+      return ComprehensiveAnalysisSchema.parse(object);
     } catch (error) {
       if (attempt === maxAttempts) {
         throw error;
