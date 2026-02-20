@@ -31,7 +31,8 @@
     "overrides": {
       "undici": ">=5.29.0",
       "esbuild": ">=0.25.0",
-      "jsondiffpatch": ">=0.7.3"
+      "jsondiffpatch": ">=0.7.3",
+      "tar": ">=7.5.8"
     }
   }
 }
